@@ -1,0 +1,2 @@
+"test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
+"SET rdma-rx-benchmark-key __data__","171.06","5.823","1.048","5.559","7.423","11.551","15.343"

@@ -1,0 +1,5 @@
+RDMA_BENCH_STATS tx_bytes=77 tx_wait_count=1 tx_wait_ns=356000
+RDMA_BENCH_STATS tx_bytes=721456752 tx_wait_count=11008 tx_wait_ns=1384258000
+RDMA_BENCH_STATS tx_bytes=721456752 tx_wait_count=11008 tx_wait_ns=1500709000
+RDMA_BENCH_STATS tx_bytes=721456752 tx_wait_count=11008 tx_wait_ns=1502290000
+RDMA_BENCH_STATS tx_bytes=738234816 tx_wait_count=11264 tx_wait_ns=1475738000

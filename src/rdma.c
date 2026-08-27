@@ -126,7 +126,7 @@ typedef struct RdmaContext {
     ValkeyRdmaCmd *cmd_buf;
     struct ibv_mr *cmd_mr;
 
-    uint64_t window_reannounce_count; /* RegisterXferMemory sent on this connection */
+    uint64_t rx_window_reannounce_count; /* RX buffer exhausted, excluding initial handoff */
 } RdmaContext;
 
 typedef struct rdma_listener {
@@ -141,8 +141,9 @@ static list *pending_list;
 static rdma_listener *rdma_listeners;
 static serverRdmaContextConfig *rdma_config;
 
-/* Sum of window_reannounce_count across all connections (for INFO rdma). */
-static uint64_t rdma_total_window_reannounce_count;
+/* RX windows re-announced after exhaustion (excludes connection setup). */
+static uint64_t rdma_total_rx_window_reannounce_count;
+static int rdma_bench_stats_registered;
 
 static size_t page_size;
 
@@ -485,8 +486,6 @@ static int connRdmaRegisterRx(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
 
     ctx->rx.offset = 0;
     ctx->rx.pos = 0;
-    ctx->window_reannounce_count++;
-    rdma_total_window_reannounce_count++;
 
     return rdmaSendCommand(ctx, cm_id, &cmd);
 }
@@ -755,6 +754,8 @@ static void connRdmaEventHandler(struct aeEventLoop *el, int fd, void *clientDat
 
     /* recv buf is full, register a new RX buffer */
     if (ctx->rx.pos == ctx->rx.length) {
+        ctx->rx_window_reannounce_count++;
+        rdma_total_rx_window_reannounce_count++;
         connRdmaRegisterRx(ctx, cm_id);
     }
 
@@ -1895,14 +1896,27 @@ ConnectionType *connectionTypeRdma(void) {
 }
 
 sds genRdmaInfoString(sds info) {
+    if (!getenv("VALKEY_RDMA_BENCH_STATS")) return info;
     info = sdscatprintf(info,
                         "# RDMA\r\n"
-                        "window_reannounce_count:%llu\r\n",
-                        (unsigned long long)rdma_total_window_reannounce_count);
+                        "rx_window_reannounce_count:%llu\r\n",
+                        (unsigned long long)rdma_total_rx_window_reannounce_count);
     return info;
 }
 
+static void rdmaBenchStatsAtExit(void) {
+    if (!getenv("VALKEY_RDMA_BENCH_STATS")) return;
+    fprintf(stderr,
+            "RDMA_BENCH_STATS rx_reannounce_count=%llu\n",
+            (unsigned long long)rdma_total_rx_window_reannounce_count);
+    fflush(stderr);
+}
+
 int RegisterConnectionTypeRdma(void) {
+    if (!rdma_bench_stats_registered && getenv("VALKEY_RDMA_BENCH_STATS")) {
+        atexit(rdmaBenchStatsAtExit);
+        rdma_bench_stats_registered = 1;
+    }
     return connTypeRegister(&CT_RDMA);
 }
 

@@ -1,0 +1,5 @@
+note,rx_reannounce_count,reannounces_per_gib,tx_wait_count,tx_wait_ns,avg_wait_us,normalized_wait_ratio
+A_value_eq_rx,22722,16383.52,22724,1835958000,80.8,0.611986
+B_value_gtgt_rx,27968,16383.79,27969,3593957000,128.5,1.197986
+C_value_gtgt_rx_heavy,29696,16383.79,29697,3841022000,129.3,0.320085
+D_rx_gtgt_value,444,255.75,446,34824000,78.1,0.011608

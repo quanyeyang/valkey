@@ -36,6 +36,7 @@
 
 set -Eeuo pipefail
 export LC_ALL=C
+export VALKEY_RDMA_BENCH_STATS=1
 
 # ----------------------------- tunables --------------------------------------
 
@@ -403,35 +404,46 @@ scan_server_errors() {
     printf '%s' "${m:-none}"
 }
 
-get_server_window_reannounce() {
+get_server_rx_reannounce() {
     local v
     v="$(timeout 10 ./src/valkey-cli --rdma -h "$RDMA_IP" -p "$RDMA_PORT" INFO rdma 2>/dev/null \
-        | awk -F: '/^window_reannounce_count:/ { gsub(/\r/, "", $2); print $2; exit }')"
+        | awk -F: '/^rx_window_reannounce_count:/ { gsub(/\r/, "", $2); print $2; exit }')"
     printf '%s' "${v:-0}"
 }
 
-parse_client_rdma_stats() {
-    # Reads benchmark stderr (raw_err) for:
-    #   RDMA_STATS window_reannounce_count=N tx_wait_for_rx_ns=N
+sum_client_bench_stats() {
+    # Sum every RDMA_BENCH_STATS line from benchmark stderr (one per connection
+    # on close). Prints: tx_bytes tx_wait_count tx_wait_ns
     local err_file="$1"
-    local line
-    line="$(grep '^RDMA_STATS ' "$err_file" 2>/dev/null | tail -n1 || true)"
-    if [[ -z "$line" ]]; then
-        printf '%s\n' "" ""
-        return 0
-    fi
-    printf '%s\n' \
-        "$(sed -n 's/.*window_reannounce_count=\([0-9]*\).*/\1/p' <<<"$line")" \
-        "$(sed -n 's/.*tx_wait_for_rx_ns=\([0-9]*\).*/\1/p' <<<"$line")"
+    awk '/^RDMA_BENCH_STATS / {
+        for (i = 1; i <= NF; i++) {
+            split($i, kv, "=")
+            if (kv[1] == "tx_bytes") tb += kv[2]
+            else if (kv[1] == "tx_wait_count") tc += kv[2]
+            else if (kv[1] == "tx_wait_ns") tn += kv[2]
+        }
+    }
+    END { printf "%s %s %s\n", tb + 0, tc + 0, tn + 0 }' "$err_file" 2>/dev/null
+}
+
+compute_bench_metrics() {
+    # args: rx_delta tx_bytes tx_wait_count tx_wait_ns duration_sec clients
+    local rx_delta="$1" tx_bytes="$2" tx_wait_count="$3" tx_wait_ns="$4"
+    local duration_sec="$5" clients="$6"
+    awk -v rx="$rx_delta" -v tb="$tx_bytes" -v tc="$tx_wait_count" -v tn="$tx_wait_ns" \
+        -v dur="$duration_sec" -v c="$clients" 'BEGIN {
+        gib = tb / (1024 * 1024 * 1024)
+        if (gib > 0) rpg = rx / gib; else rpg = ""
+        if (tc > 0) avg_us = tn / tc / 1000; else avg_us = ""
+        if (dur > 0 && c > 0) nwr = tn / (dur * 1000000000 * c); else nwr = ""
+        printf "%s,%s,%s,%s,%s,%s\n", rx, rpg, tc, tn, avg_us, nwr
+    }'
 }
 
 append_row() {
-    # git_commit,timestamp,mode,rx_size,value_size,clients,pipeline,threads,
-    # repetition,duration,rps,payload_gbps,avg_latency_ms,p50_latency_ms,
-    # p95_latency_ms,p99_latency_ms,exit_status,server_error,bench_error,
-    # verify_strlen,server_window_reannounce_delta,client_window_reannounce_count,
-    # client_tx_wait_for_rx_ns,raw_file
-    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
+    # ... verify_strlen, rx_reannounce_count, reannounces_per_gib, tx_wait_count,
+    # tx_wait_ns, avg_wait_us, normalized_wait_ratio, raw_file
+    printf '%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n' \
         "$(csv_field "$1")"  "$(csv_field "$2")"  "$(csv_field "$3")"  \
         "$(csv_field "$4")"  "$(csv_field "$5")"  "$(csv_field "$6")"  \
         "$(csv_field "$7")"  "$(csv_field "$8")"  "$(csv_field "$9")"  \
@@ -440,6 +452,7 @@ append_row() {
         "$(csv_field "${16}")" "$(csv_field "${17}")" "$(csv_field "${18}")" \
         "$(csv_field "${19}")" "$(csv_field "${20}")" "$(csv_field "${21}")" \
         "$(csv_field "${22}")" "$(csv_field "${23}")" "$(csv_field "${24}")" \
+        "$(csv_field "${25}")" "$(csv_field "${26}")" "$(csv_field "${27}")" \
         >> "$RESULTS_DIR/summary.csv"
 }
 
@@ -458,23 +471,23 @@ run_benchmark() {
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
         log "  server is dead before the run"
         append_row "$GIT_COMMIT" "$(date -Is)" "$MODE" "$rx" "$value" "$clients" "$pipeline" 1 "$rep" \
-            "$DURATION" "" "" "" "" "" "" "SERVER_DEAD" "server_dead" "" "cli_fail" "" "" "" "$tag"
+            "$DURATION" "" "" "" "" "" "" "SERVER_DEAD" "server_dead" "" "cli_fail" "" "" "" "" "" "" "$tag"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         return 2
     fi
     if ! verify_rx_config "$rx"; then
         log "  effective rdma-rx-size drifted from $rx"
         append_row "$GIT_COMMIT" "$(date -Is)" "$MODE" "$rx" "$value" "$clients" "$pipeline" 1 "$rep" \
-            "$DURATION" "" "" "" "" "" "" "CONFIG_MISMATCH" "config_mismatch" "" "cli_fail" "" "" "" "$tag"
+            "$DURATION" "" "" "" "" "" "" "CONFIG_MISMATCH" "config_mismatch" "" "cli_fail" "" "" "" "" "" "" "$tag"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         return 0
     fi
 
-    local srv_reannounce_before srv_reannounce_after srv_reannounce_delta
-    srv_reannounce_before="$(get_server_window_reannounce)"
+    local srv_before srv_after rx_delta tx_bytes tx_wait_count tx_wait_ns metrics
+    srv_before="$(get_server_rx_reannounce)"
 
     local bench_rc=0
-    timeout -k 10 "$BENCH_TIMEOUT" ./src/valkey-benchmark \
+    VALKEY_RDMA_BENCH_STATS=1 timeout -k 10 "$BENCH_TIMEOUT" ./src/valkey-benchmark \
         --rdma \
         -h "$RDMA_IP" \
         -p "$RDMA_PORT" \
@@ -489,13 +502,13 @@ run_benchmark() {
         -- SET "$BENCH_KEY" __data__ \
         >"$raw_out" 2>"$raw_err" || bench_rc=$?
 
-    srv_reannounce_after="$(get_server_window_reannounce)"
-    srv_reannounce_delta=$((srv_reannounce_after - srv_reannounce_before))
+    srv_after="$(get_server_rx_reannounce)"
+    rx_delta=$((srv_after - srv_before))
 
-    local client_reannounce client_tx_wait
-    mapfile -t _rdma_stats < <(parse_client_rdma_stats "$raw_err")
-    client_reannounce="${_rdma_stats[0]:-}"
-    client_tx_wait="${_rdma_stats[1]:-}"
+    read -r tx_bytes tx_wait_count tx_wait_ns < <(sum_client_bench_stats "$raw_err")
+    local reannounces_per_gib avg_wait_us normalized_wait_ratio _rx
+    IFS=, read -r _rx reannounces_per_gib tx_wait_count tx_wait_ns avg_wait_us normalized_wait_ratio \
+        < <(compute_bench_metrics "$rx_delta" "$tx_bytes" "$tx_wait_count" "$tx_wait_ns" "$DURATION" "$clients")
 
     # Parse CSV. Verified format (src/valkey-benchmark.c):
     #   "test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms",
@@ -543,12 +556,13 @@ run_benchmark() {
         FAIL_COUNT=$((FAIL_COUNT + 1))
         log "  server log shows error: $serr"
     else
-        log "  ok: rps=$rps payload=${gbps}Gbps p50=${p50}ms p99=${p99}ms strlen=ok srv_reannounce_delta=${srv_reannounce_delta} client_tx_wait_ns=${client_tx_wait:-n/a}"
+        log "  ok: rps=$rps payload=${gbps}Gbps p50=${p50}ms rx_reannounce=$rx_delta rpg=${reannounces_per_gib:-n/a} tx_wait_ns=$tx_wait_ns stall_ratio=${normalized_wait_ratio:-n/a}"
     fi
 
     append_row "$GIT_COMMIT" "$(date -Is)" "$MODE" "$rx" "$value" "$clients" "$pipeline" 1 "$rep" \
         "$DURATION" "$rps" "$gbps" "$avg" "$p50" "$p95" "$p99" \
-        "$bench_rc" "$serr" "$berr" "$verify" "$srv_reannounce_delta" "$client_reannounce" "$client_tx_wait" "$tag"
+        "$bench_rc" "$serr" "$berr" "$verify" "$rx_delta" "$reannounces_per_gib" "$tx_wait_count" \
+        "$tx_wait_ns" "$avg_wait_us" "$normalized_wait_ratio" "$tag"
     return 0
 }
 
@@ -659,7 +673,7 @@ EOF
     capture_environment
 
     printf '%s\n' \
-        'git_commit,timestamp,mode,rx_size,value_size,clients,pipeline,threads,repetition,duration,rps,payload_gbps,avg_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,exit_status,server_error,bench_error,verify_strlen,server_window_reannounce_delta,client_window_reannounce_count,client_tx_wait_for_rx_ns,raw_file' \
+        'git_commit,timestamp,mode,rx_size,value_size,clients,pipeline,threads,repetition,duration,rps,payload_gbps,avg_latency_ms,p50_latency_ms,p95_latency_ms,p99_latency_ms,exit_status,server_error,bench_error,verify_strlen,rx_reannounce_count,reannounces_per_gib,tx_wait_count,tx_wait_ns,avg_wait_us,normalized_wait_ratio,raw_file' \
         > "$RESULTS_DIR/summary.csv"
 
     run_suite

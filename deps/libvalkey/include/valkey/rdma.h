@@ -36,18 +36,10 @@
 #define VALKEY_RDMA_H
 
 #include "visibility.h"
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-struct valkeyContext;
-
-typedef struct valkeyRdmaStats {
-    uint64_t window_reannounce_count;
-    uint64_t tx_wait_for_rx_ns;
-} valkeyRdmaStats;
 
 /**
  * Helper macros to initialize options for RDMA.
@@ -69,7 +61,6 @@ typedef struct valkeyRdmaStats {
     } while (0)
 
 LIBVALKEY_API int valkeyInitiateRdma(void);
-LIBVALKEY_API int valkeyGetRdmaStats(struct valkeyContext *c, valkeyRdmaStats *stats);
 
 #ifdef __cplusplus
 }

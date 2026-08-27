@@ -1,0 +1,6 @@
+rx_size,value_size,clients,pipeline,note,exit_status,rps,server_window_reannounce_delta,client_window_reannounce_count,client_tx_wait_for_rx_ns,tag
+65536,65536,1,1,A_value_eq_rx_small,0,7134.67,27934,0,0,spot-rx65536-d65536-c1-P1
+65536,4194304,1,1,B_value_gtgt_rx,0,129.49,33859,0,0,spot-rx65536-d4194304-c1-P1
+65536,4194304,4,16,C_value_gtgt_rx_heavy,0,121.98,36870,4,3664631000,spot-rx65536-d4194304-c4-P16
+4194304,65536,1,1,D_rx_gtgt_value,0,8703.33,542,0,0,spot-rx4194304-d65536-c1-P1
+4194304,4194304,1,1,E_value_eq_rx_large,0,168.61,688,0,0,spot-rx4194304-d4194304-c1-P1
