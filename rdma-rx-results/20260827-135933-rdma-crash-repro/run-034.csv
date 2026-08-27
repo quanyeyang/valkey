@@ -1,0 +1,2 @@
+"test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
+"SET crash-repro-key __data__","23792.00","2.617","0.328","2.591","3.399","4.215","7.359"

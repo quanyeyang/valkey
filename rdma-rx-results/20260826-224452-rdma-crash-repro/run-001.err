@@ -1,0 +1,18 @@
+
+=================================================================
+==118129==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 1720 byte(s) in 5 object(s) allocated from:
+    #0 0x7f994c72bea9 in calloc (/usr/lib/libasan.so.8+0x12bea9) (BuildId: 7f2845989b820f536270e19ec47df085ae89a675)
+    #1 0x7f994b76a873  (/usr/lib/libibverbs/librxe-rdmav64.so+0x2873) (BuildId: c773dc5903cab25c8e8726f6f569743f2b4ce3ca)
+    #2 0x7f994c3592d3 in ibv_create_cq (/usr/lib/libibverbs.so.1+0x1a2d3) (BuildId: c4fc3c8c9eda54c3bc9c1e4e3d759b83f7d9ec41)
+    #3 0x558435443489 in valkeyRdmaConnect src/rdma.c:921
+    #4 0x558435443489 in valkeyRdmaCM src/rdma.c:1005
+
+Indirect leak of 80 byte(s) in 5 object(s) allocated from:
+    #0 0x7f994c72c0c1 in malloc (/usr/lib/libasan.so.8+0x12c0c1) (BuildId: 7f2845989b820f536270e19ec47df085ae89a675)
+    #1 0x7f994c3590d5 in ibv_create_comp_channel (/usr/lib/libibverbs.so.1+0x1a0d5) (BuildId: c4fc3c8c9eda54c3bc9c1e4e3d759b83f7d9ec41)
+    #2 0x5584354433f1 in valkeyRdmaConnect src/rdma.c:905
+    #3 0x5584354433f1 in valkeyRdmaCM src/rdma.c:1005
+
+SUMMARY: AddressSanitizer: 1800 byte(s) leaked in 10 allocation(s).

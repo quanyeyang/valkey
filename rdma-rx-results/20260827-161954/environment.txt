@@ -1,0 +1,129 @@
+=== captured at: 2026-08-27T16:20:32+08:00 ===
+=== mode: smoke ===
+
+=== uname -a ===
+Linux mostima 7.1.6-arch1-1 #1 SMP PREEMPT_DYNAMIC Tue, 04 Aug 2026 11:19:27 +0000 x86_64 GNU/Linux
+
+=== git rev-parse HEAD ===
+9ab2c530f66c777081705101cc375be449cb55e4
+
+=== git describe ===
+9ab2c530f-dirty
+
+=== git status --short ===
+ M deps/libvalkey/include/valkey/rdma.h
+ M deps/libvalkey/src/rdma.c
+ M src/connection.h
+ M src/rdma.c
+ M src/server.c
+ M src/valkey-benchmark.c
+?? rdma-rx-results/
+?? utils/rdma-crash-repro.sh
+?? utils/rdma-rx-size-benchmark.sh
+?? utils/tcp-crash-repro.sh
+
+=== lscpu ===
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  32
+On-line CPU(s) list:                     0-31
+Vendor ID:                               GenuineIntel
+Model name:                              13th Gen Intel(R) Core(TM) i9-13900HX
+CPU family:                              6
+Model:                                   183
+Thread(s) per core:                      2
+Core(s) per socket:                      24
+Socket(s):                               1
+Stepping:                                1
+Microcode version:                       0x133
+CPU(s) scaling MHz:                      35%
+CPU max MHz:                             5400.0000
+CPU min MHz:                             800.0000
+BogoMIPS:                                4838.40
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc art arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf tsc_known_freq pni pclmulqdq dtes64 monitor ds_cpl vmx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb intel_pt sha_ni xsaveopt xsavec xgetbv1 xsaves split_lock_detect user_shstk avx_vnni dtherm ida arat pln pts hwp hwp_notify hwp_act_window hwp_epp hwp_pkg_req hfi vnmi umip pku ospke waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize arch_lbr ibt flush_l1d arch_capabilities
+Virtualization:                          VT-x
+L1d cache:                               896 KiB (24 instances)
+L1i cache:                               1.3 MiB (24 instances)
+L2 cache:                                32 MiB (12 instances)
+L3 cache:                                36 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-31
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Ghostwrite:                Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Old microcode:             Not affected
+Vulnerability Reg file data sampling:    Mitigation; Clear Register File
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI BHI_DIS_S
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspace
+
+=== free -h ===
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       8.0Gi       3.0Gi       1.0Gi       5.6Gi       7.3Gi
+Swap:          4.0Gi       2.6Gi       1.4Gi
+
+=== ulimit -l ===
+unlimited
+
+=== id ===
+uid=1000(ada) gid=1000(ada) groups=1000(ada),951(libvirt),958(docker),992(kvm),996(audio),998(wheel)
+
+=== ip -details addr show dummy0 ===
+16: dummy0: <BROADCAST,NOARP,UP,LOWER_UP> mtu 1500 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/ether ca:ee:58:62:62:87 brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 0 maxmtu 0 
+    dummy numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 
+    inet 10.200.0.1/24 scope global dummy0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::c8ee:58ff:fe62:6287/64 scope link proto kernel_ll 
+       valid_lft forever preferred_lft forever
+
+=== rdma link show ===
+link rxe_dummy/1 state ACTIVE physical_state LINK_UP netdev dummy0 
+
+=== rdma res show ===
+11: rxe_dummy: pd 1 cq 1 qp 1 cm_id 0 mr 0 ctx 0 srq 0 
+
+=== ibv_devices ===
+    device          	   node GUID
+    ------          	----------------
+    rxe_dummy       	c8ee58fffe626287
+
+=== ibv_devinfo ===
+hca_id:	rxe_dummy
+	transport:			InfiniBand (0)
+	fw_ver:				0.0.0
+	node_guid:			c8ee:58ff:fe62:6287
+	sys_image_guid:			c8ee:58ff:fe62:6287
+	vendor_id:			0xffffff
+	vendor_part_id:			0
+	hw_ver:				0x0
+	phys_port_cnt:			1
+		port:	1
+			state:			PORT_ACTIVE (4)
+			max_mtu:		4096 (5)
+			active_mtu:		1024 (3)
+			sm_lid:			0
+			port_lid:		0
+			port_lmc:		0x00
+			link_layer:		Ethernet
+
+
+=== relevant kernel modules ===
+rdma_cm               159744  3 rpcrdma,ib_iser,rdma_ucm
+ib_uverbs             208896  1 rdma_ucm
+rdma_rxe              217088  0
+dummy                  16384  0
+ib_core               622592  8 rdma_cm,rdma_rxe,rpcrdma,iw_cm,ib_iser,rdma_ucm,ib_uverbs,ib_cm

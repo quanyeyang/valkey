@@ -283,6 +283,9 @@ typedef struct RdmaContext {
      * VALKEY_RDMA_MAX_WQE ~ 2 * VALKEY_RDMA_MAX_WQE -1 for send buffer */
     valkeyRdmaCmd *cmd_buf;
     struct ibv_mr *cmd_mr;
+
+    uint64_t window_reannounce_count; /* RegisterXferMemory sent on this connection */
+    uint64_t tx_wait_for_rx_ns;       /* time spent waiting for a new server RX window */
 } RdmaContext;
 
 /* Apparently CHERI uintptr_t can be 128 bits */
@@ -531,6 +534,7 @@ static int connRdmaRegisterRx(valkeyContext *c, struct rdma_cm_id *cm_id) {
 
     ctx->rx_offset = 0;
     ctx->recv_offset = 0;
+    ctx->window_reannounce_count++;
 
     return rdmaSendCommand(c, cm_id, &cmd);
 }
@@ -820,6 +824,7 @@ static ssize_t valkeyRdmaWrite(valkeyContext *c) {
         assert(ctx->tx_offset <= ctx->tx_length);
         if (ctx->tx_offset == ctx->tx_length) {
             /* wait a new TX buffer */
+            int64_t wait_start = vk_usec_now();
             elapsed = vk_msec_now() - start;
             if (elapsed >= timed) {
                 valkeySetError(c, VALKEY_ERR_IO, "RDMA: IO timeout");
@@ -830,6 +835,7 @@ static ssize_t valkeyRdmaWrite(valkeyContext *c) {
                 return VALKEY_ERR;
             }
 
+            ctx->tx_wait_for_rx_ns += (uint64_t)(vk_usec_now() - wait_start) * 1000ULL;
             continue;
         }
 
@@ -1280,6 +1286,23 @@ int valkeyInitiateRdma(void) {
 #endif
     valkeyContextRegisterFuncs(&valkeyContextRdmaFuncs, VALKEY_CONN_RDMA);
 
+    return VALKEY_OK;
+}
+
+int valkeyGetRdmaStats(valkeyContext *c, valkeyRdmaStats *stats) {
+    RdmaContext *ctx;
+
+    if (!c || !stats || c->connection_type != VALKEY_CONN_RDMA) {
+        return VALKEY_ERR;
+    }
+
+    ctx = c->privctx;
+    if (!ctx) {
+        return VALKEY_ERR;
+    }
+
+    stats->window_reannounce_count = ctx->window_reannounce_count;
+    stats->tx_wait_for_rx_ns = ctx->tx_wait_for_rx_ns;
     return VALKEY_OK;
 }
 

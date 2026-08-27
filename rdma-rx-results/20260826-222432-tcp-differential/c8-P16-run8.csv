@@ -1,0 +1,2 @@
+"test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
+"SET tcp-crash-key __data__","106713.00","0.653","0.152","0.647","1.143","1.263","2.287"

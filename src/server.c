@@ -6878,6 +6878,13 @@ sds genValkeyInfoString(dict *section_dict, int all_sections, int everything) {
                 "io_threaded_writes_pending:%lld\r\n", server.stat_io_writes_pending));
     }
 
+#ifdef USE_RDMA
+    if (all_sections || (dictFind(section_dict, "rdma") != NULL)) {
+        if (sections++) info = sdscat(info, "\r\n");
+        info = genRdmaInfoString(info);
+    }
+#endif
+
     return info;
 }
 

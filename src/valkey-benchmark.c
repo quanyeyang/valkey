@@ -1181,6 +1181,30 @@ static void showRPSReport(void) {
     }
 }
 
+#ifdef USE_RDMA
+static void showRdmaStatsReport(void) {
+    if (config.ct != VALKEY_CONN_RDMA) return;
+
+    uint64_t window_reannounce = 0;
+    uint64_t tx_wait_ns = 0;
+    listIter li;
+    listNode *ln;
+
+    listRewind(config.clients, &li);
+    while ((ln = listNext(&li)) != NULL) {
+        client c = ln->value;
+        valkeyRdmaStats stats;
+
+        if (valkeyGetRdmaStats(c->context, &stats) != VALKEY_OK) continue;
+        window_reannounce += stats.window_reannounce_count;
+        tx_wait_ns += stats.tx_wait_for_rx_ns;
+    }
+
+    fprintf(stderr, "RDMA_STATS window_reannounce_count=%llu tx_wait_for_rx_ns=%llu\n",
+            (unsigned long long)window_reannounce, (unsigned long long)tx_wait_ns);
+}
+#endif
+
 static void showReport(void) {
     const float reqpersec = (float)config.requests_finished / ((float)config.totlatency / 1000.0f);
     const float p0 = ((float)hdr_min(config.latency_histogram)) / 1000.0f;
@@ -1344,6 +1368,9 @@ static void benchmarkSequence(const char *title, char *cmd, int len, int seqlen)
         startBenchmarkThreads();
     config.totlatency = mstime() - config.start;
     showReport();
+#ifdef USE_RDMA
+    showRdmaStatsReport();
+#endif
     freeAllClients();
     if (config.threads) freeBenchmarkThreads();
     if (config.current_sec_latency_histogram) hdr_close(config.current_sec_latency_histogram);

@@ -125,6 +125,8 @@ typedef struct RdmaContext {
      * VALKEY_RDMA_MAX_WQE ~ 2 * VALKEY_RDMA_MAX_WQE -1 for send buffer */
     ValkeyRdmaCmd *cmd_buf;
     struct ibv_mr *cmd_mr;
+
+    uint64_t window_reannounce_count; /* RegisterXferMemory sent on this connection */
 } RdmaContext;
 
 typedef struct rdma_listener {
@@ -138,6 +140,9 @@ static list *pending_list;
 
 static rdma_listener *rdma_listeners;
 static serverRdmaContextConfig *rdma_config;
+
+/* Sum of window_reannounce_count across all connections (for INFO rdma). */
+static uint64_t rdma_total_window_reannounce_count;
 
 static size_t page_size;
 
@@ -480,6 +485,8 @@ static int connRdmaRegisterRx(RdmaContext *ctx, struct rdma_cm_id *cm_id) {
 
     ctx->rx.offset = 0;
     ctx->rx.pos = 0;
+    ctx->window_reannounce_count++;
+    rdma_total_window_reannounce_count++;
 
     return rdmaSendCommand(ctx, cm_id, &cmd);
 }
@@ -1887,11 +1894,23 @@ ConnectionType *connectionTypeRdma(void) {
     return ct_rdma;
 }
 
+sds genRdmaInfoString(sds info) {
+    info = sdscatprintf(info,
+                        "# RDMA\r\n"
+                        "window_reannounce_count:%llu\r\n",
+                        (unsigned long long)rdma_total_window_reannounce_count);
+    return info;
+}
+
 int RegisterConnectionTypeRdma(void) {
     return connTypeRegister(&CT_RDMA);
 }
 
 #else
+
+sds genRdmaInfoString(sds info) {
+    return info;
+}
 
 int RegisterConnectionTypeRdma(void) {
     serverLog(LL_VERBOSE, "Connection type %s not builtin", getConnectionTypeName(CONN_TYPE_RDMA));
@@ -1939,6 +1958,10 @@ int ValkeyModule_OnUnload(void *arg) {
 #endif /* BUILD_RDMA_MODULE */
 
 #else /* __linux__ */
+
+sds genRdmaInfoString(sds info) {
+    return info;
+}
 
 int RegisterConnectionTypeRdma(void) {
     serverLog(LL_VERBOSE, "Connection type %s is supported on Linux only", getConnectionTypeName(CONN_TYPE_RDMA));
