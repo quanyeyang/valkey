@@ -1,0 +1,3 @@
+phase_index,value_size,duration,measured_sec,requests,rps,payload_gbps,avg_latency_us,p50_latency_us,p99_latency_us,reconnects,errors,tx_bytes,tx_wait_count,tx_wait_ns,rx_reannounce,reannounces_per_gib,stall_ratio
+0,32,2,2.252000,342910,152269.094,0.038981,21.023,23.000,79.000,0,0,25717950,24,454000,24,1002.016248,0.000101
+1,64,2,2.251000,368296,163614.394,0.083771,19.180,23.000,55.000,0,0,39407672,37,651000,38,1035.386950,0.000145

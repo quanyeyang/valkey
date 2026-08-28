@@ -1,0 +1,19 @@
+PHASE_WORKLOAD pid=68870 phases=6 clients=4 pipeline=16 keepalive=1
+PHASE_BEGIN index=0 value_size=4096 duration_sec=20 elapsed_ms=0
+PHASE_END index=0 value_size=4096 measured_sec=20.260000 requests=5562400 rps=274550.839 payload_gbps=8.996482 avg_latency_us=221.652 p50_latency_us=191.000 p99_latency_us=663.000 reconnects=0 errors=0 tx_bytes=23033633376 tx_wait_count=21961 tx_wait_ns=2476341000 rx_reannounce=21965 reannounces_per_gib=1023.926134 stall_ratio=0.030557
+PHASE_TRANSITION index=1 elapsed_ms=20260 old_value_size=4096 new_value_size=65536
+PHASE_BEGIN index=1 value_size=65536 duration_sec=20 elapsed_ms=20263
+PHASE_END index=1 value_size=65536 measured_sec=20.406000 requests=348912 rps=17098.500 payload_gbps=8.964539 avg_latency_us=3661.572 p50_latency_us=3615.000 p99_latency_us=5823.000 reconnects=0 errors=0 tx_bytes=22882346784 tx_wait_count=21823 tx_wait_ns=17142719000 rx_reannounce=21823 reannounces_per_gib=1024.032546 stall_ratio=0.210021
+PHASE_TRANSITION index=2 elapsed_ms=40670 old_value_size=65536 new_value_size=1048576
+PHASE_BEGIN index=2 value_size=1048576 duration_sec=30 elapsed_ms=40774
+PHASE_END index=2 value_size=1048576 measured_sec=30.476000 requests=19296 rps=633.154 payload_gbps=5.311280 avg_latency_us=99404.119 p50_latency_us=96831.000 p99_latency_us=153215.000 reconnects=0 errors=0 tx_bytes=20234248704 tx_wait_count=19296 tx_wait_ns=22828204000 rx_reannounce=19296 reannounces_per_gib=1023.953127 stall_ratio=0.187264
+PHASE_TRANSITION index=3 elapsed_ms=71251 old_value_size=1048576 new_value_size=4194304
+PHASE_BEGIN index=3 value_size=4194304 duration_sec=30 elapsed_ms=71669
+PHASE_END index=3 value_size=4194304 measured_sec=30.305000 requests=4480 rps=147.830 payload_gbps=4.960365 avg_latency_us=426664.800 p50_latency_us=425215.000 p99_latency_us=516607.000 reconnects=0 errors=0 tx_bytes=18790696960 tx_wait_count=17920 tx_wait_ns=21293814000 rx_reannounce=17920 reannounces_per_gib=1023.988281 stall_ratio=0.175663
+PHASE_TRANSITION index=4 elapsed_ms=101975 old_value_size=4194304 new_value_size=65536
+PHASE_BEGIN index=4 value_size=65536 duration_sec=30 elapsed_ms=101976
+PHASE_END index=4 value_size=65536 measured_sec=30.497000 requests=514720 rps=16877.726 payload_gbps=8.848789 avg_latency_us=3723.204 p50_latency_us=3663.000 p99_latency_us=6343.000 reconnects=0 errors=0 tx_bytes=33756367040 tx_wait_count=32192 tx_wait_ns=25684736000 rx_reannounce=32192 reannounces_per_gib=1023.981543 stall_ratio=0.210551
+PHASE_TRANSITION index=5 elapsed_ms=132473 old_value_size=65536 new_value_size=4096
+PHASE_BEGIN index=5 value_size=4096 duration_sec=60 elapsed_ms=132473
+PHASE_END index=5 value_size=4096 measured_sec=60.278000 requests=17785232 rps=295053.452 payload_gbps=9.668312 avg_latency_us=207.983 p50_latency_us=183.000 p99_latency_us=623.000 reconnects=0 errors=0 tx_bytes=73648645712 tx_wait_count=70221 tx_wait_ns=7374746000 rx_reannounce=70237 reannounces_per_gib=1024.002597 stall_ratio=0.030586
+PHASE_WORKLOAD done phases=6 pid=68870

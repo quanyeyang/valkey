@@ -1,0 +1,1 @@
+{"commit":"7bf7daa53046cd3853574786c896da70c8b23296","transport":"rxe","bind":"10.200.0.1","host":"10.200.0.1","port":16379,"rx_size":1048576,"clients":4,"pipeline":16,"threads":0,"phases":"4096:20,65536:20,1048576:30,4194304:30,65536:30,4096:60","role":"all"}

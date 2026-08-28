@@ -1,0 +1,1 @@
+./utils/rdma-rx-phase-benchmark.sh --rx-sizes 16M --repeats 2 --keep-rxe

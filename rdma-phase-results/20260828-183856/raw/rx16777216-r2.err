@@ -1,0 +1,2 @@
+PHASE_WORKLOAD pid=70770 phases=6 clients=4 pipeline=16 keepalive=1
+PHASE_BEGIN index=0 value_size=4096 duration_sec=20 elapsed_ms=0

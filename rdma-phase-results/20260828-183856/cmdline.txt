@@ -1,0 +1,1 @@
+./utils/rdma-rx-phase-benchmark.sh --static-bounds --keep-rxe
