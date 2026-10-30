@@ -1214,59 +1214,111 @@ static int bitopUseSimd(int op, unsigned long numkeys, unsigned long minlen, uns
     return minlen >= threshold;
 }
 
-/* Runtime dispatcher. Returning 0 deliberately preserves the existing word and
- * byte fallback for unsupported CPUs, short inputs, or scalar-favored shapes. */
-static int bitopTrySimd(int op, unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+typedef void (*bitopFunc)(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
+
+/* Select a SIMD kernel when eligible, otherwise use the word and byte fallbacks.
+ * All paths preserve zero-extension and the existing AND/OR short-circuit policy. */
+VALKEY_NO_SANITIZE("alignment")
+static void bitopCompute(int op, unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+    bitopFunc kernel = NULL;
+    unsigned long j = 0;
+
 #if HAVE_X86_SIMD
     if (bitopUseSimd(op, numkeys, minlen, maxlen, 32) && __builtin_cpu_supports("avx2")) {
-        switch (op) {
-        case BITOP_AND:
-            bitopAndAVX2(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_OR:
-            bitopOrAVX2(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_XOR:
-            bitopXorAVX2(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_NOT:
-            bitopNotAVX2(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        }
+        static const bitopFunc kernels[] = {
+            [BITOP_AND] = bitopAndAVX2,
+            [BITOP_OR] = bitopOrAVX2,
+            [BITOP_XOR] = bitopXorAVX2,
+            [BITOP_NOT] = bitopNotAVX2,
+        };
+        kernel = kernels[op];
     }
 #endif
 #if HAVE_ARM_NEON
     if (bitopUseSimd(op, numkeys, minlen, maxlen, 16)) {
-        switch (op) {
-        case BITOP_AND:
-            bitopAndNEON(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_OR:
-            bitopOrNEON(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_XOR:
-            bitopXorNEON(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
-        case BITOP_NOT:
-            bitopNotNEON(dst, src, len, numkeys, minlen, maxlen);
-            return 1;
+        static const bitopFunc kernels[] = {
+            [BITOP_AND] = bitopAndNEON,
+            [BITOP_OR] = bitopOrNEON,
+            [BITOP_XOR] = bitopXorNEON,
+            [BITOP_NOT] = bitopNotNEON,
+        };
+        kernel = kernels[op];
+    }
+#endif
+    if (kernel) {
+        kernel(dst, src, len, numkeys, minlen, maxlen);
+        return;
+    }
+
+    /* Process the common prefix a word at a time when unaligned access is safe. */
+#ifndef USE_ALIGNED_ACCESS
+    if (minlen >= sizeof(unsigned long) * 4 && numkeys <= 16) {
+        unsigned long i;
+        unsigned long *lp[16];
+        unsigned long *lres = (unsigned long *)dst;
+
+        memcpy(lp, src, sizeof(unsigned long *) * numkeys);
+        memcpy(dst, src[0], minlen);
+
+        /* Different branches per different operations for speed (sorry). */
+        if (op == BITOP_AND) {
+            while (minlen >= sizeof(unsigned long) * 4) {
+                for (i = 1; i < numkeys; i++) {
+                    lres[0] &= lp[i][0];
+                    lres[1] &= lp[i][1];
+                    lres[2] &= lp[i][2];
+                    lres[3] &= lp[i][3];
+                    lp[i] += 4;
+                }
+                lres += 4;
+                j += sizeof(unsigned long) * 4;
+                minlen -= sizeof(unsigned long) * 4;
+            }
+        } else if (op == BITOP_OR) {
+            while (minlen >= sizeof(unsigned long) * 4) {
+                for (i = 1; i < numkeys; i++) {
+                    lres[0] |= lp[i][0];
+                    lres[1] |= lp[i][1];
+                    lres[2] |= lp[i][2];
+                    lres[3] |= lp[i][3];
+                    lp[i] += 4;
+                }
+                lres += 4;
+                j += sizeof(unsigned long) * 4;
+                minlen -= sizeof(unsigned long) * 4;
+            }
+        } else if (op == BITOP_XOR) {
+            while (minlen >= sizeof(unsigned long) * 4) {
+                for (i = 1; i < numkeys; i++) {
+                    lres[0] ^= lp[i][0];
+                    lres[1] ^= lp[i][1];
+                    lres[2] ^= lp[i][2];
+                    lres[3] ^= lp[i][3];
+                    lp[i] += 4;
+                }
+                lres += 4;
+                j += sizeof(unsigned long) * 4;
+                minlen -= sizeof(unsigned long) * 4;
+            }
+        } else if (op == BITOP_NOT) {
+            while (minlen >= sizeof(unsigned long) * 4) {
+                lres[0] = ~lres[0];
+                lres[1] = ~lres[1];
+                lres[2] = ~lres[2];
+                lres[3] = ~lres[3];
+                lres += 4;
+                j += sizeof(unsigned long) * 4;
+                minlen -= sizeof(unsigned long) * 4;
+            }
         }
     }
 #endif
-#if !HAVE_X86_SIMD && !HAVE_ARM_NEON
-    (void)op;
-    (void)dst;
-    (void)src;
-    (void)len;
-    (void)numkeys;
-    (void)minlen;
-    (void)maxlen;
-#endif
-    return 0;
+
+    /* j is set to the next byte to process by the previous loop. */
+    bitopScalarRange(dst, src, len, numkeys, j, maxlen, op);
 }
 
 /* BITOP op_name target_key src_key1 src_key2 src_key3 ... src_keyN */
-VALKEY_NO_SANITIZE("alignment")
 void bitopCommand(client *c) {
     char *opname = objectGetVal(c->argv[1]);
     robj *o, *targetkey = c->argv[2];
@@ -1335,79 +1387,7 @@ void bitopCommand(client *c) {
     /* Compute the bit operation, if at least one string is not empty. */
     if (maxlen) {
         res = (unsigned char *)sdsnewlen(NULL, maxlen);
-        if (!bitopTrySimd(op, res, src, len, numkeys, minlen, maxlen)) {
-            /* Fast path: as far as we have data for all the input bitmaps we
-             * can take a fast path that performs much better than the
-             * vanilla algorithm. On ARM we skip the fast path since it will
-             * result in GCC compiling the code using multiple-words load/store
-             * operations that are not supported even in ARM >= v6. */
-            j = 0;
-#ifndef USE_ALIGNED_ACCESS
-            if (minlen >= sizeof(unsigned long) * 4 && numkeys <= 16) {
-                unsigned long i;
-                unsigned long *lp[16];
-                unsigned long *lres = (unsigned long *)res;
-
-                memcpy(lp, src, sizeof(unsigned long *) * numkeys);
-                memcpy(res, src[0], minlen);
-
-                /* Different branches per different operations for speed (sorry). */
-                if (op == BITOP_AND) {
-                    while (minlen >= sizeof(unsigned long) * 4) {
-                        for (i = 1; i < numkeys; i++) {
-                            lres[0] &= lp[i][0];
-                            lres[1] &= lp[i][1];
-                            lres[2] &= lp[i][2];
-                            lres[3] &= lp[i][3];
-                            lp[i] += 4;
-                        }
-                        lres += 4;
-                        j += sizeof(unsigned long) * 4;
-                        minlen -= sizeof(unsigned long) * 4;
-                    }
-                } else if (op == BITOP_OR) {
-                    while (minlen >= sizeof(unsigned long) * 4) {
-                        for (i = 1; i < numkeys; i++) {
-                            lres[0] |= lp[i][0];
-                            lres[1] |= lp[i][1];
-                            lres[2] |= lp[i][2];
-                            lres[3] |= lp[i][3];
-                            lp[i] += 4;
-                        }
-                        lres += 4;
-                        j += sizeof(unsigned long) * 4;
-                        minlen -= sizeof(unsigned long) * 4;
-                    }
-                } else if (op == BITOP_XOR) {
-                    while (minlen >= sizeof(unsigned long) * 4) {
-                        for (i = 1; i < numkeys; i++) {
-                            lres[0] ^= lp[i][0];
-                            lres[1] ^= lp[i][1];
-                            lres[2] ^= lp[i][2];
-                            lres[3] ^= lp[i][3];
-                            lp[i] += 4;
-                        }
-                        lres += 4;
-                        j += sizeof(unsigned long) * 4;
-                        minlen -= sizeof(unsigned long) * 4;
-                    }
-                } else if (op == BITOP_NOT) {
-                    while (minlen >= sizeof(unsigned long) * 4) {
-                        lres[0] = ~lres[0];
-                        lres[1] = ~lres[1];
-                        lres[2] = ~lres[2];
-                        lres[3] = ~lres[3];
-                        lres += 4;
-                        j += sizeof(unsigned long) * 4;
-                        minlen -= sizeof(unsigned long) * 4;
-                    }
-                }
-            }
-#endif
-
-            /* j is set to the next byte to process by the previous loop. */
-            bitopScalarRange(res, src, len, numkeys, j, maxlen, op);
-        }
+        bitopCompute(op, res, src, len, numkeys, minlen, maxlen);
     }
     for (j = 0; j < numkeys; j++) {
         if (objects[j]) decrRefCount(objects[j]);
