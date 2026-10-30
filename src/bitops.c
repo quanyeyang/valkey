@@ -786,6 +786,211 @@ static void bitopScalarRange(unsigned char *dst, unsigned char **src, unsigned l
 }
 
 #if HAVE_X86_SIMD
+/* SDS strings are not vector-aligned, so the SSE2 helpers intentionally use
+ * unaligned loads/stores and only read bytes covered by minlen/maxlen. */
+#define BITOP_SSE2_LOAD(p) _mm_loadu_si128((const __m128i *)(p))
+#define BITOP_SSE2_STORE(p, v) _mm_storeu_si128((__m128i *)(p), (v))
+
+/* Vectorize AND over the common source prefix with unaligned SSE2 loads. The
+ * suffix is zero-filled because BITOP zero-extends shorter sources. */
+ATTRIBUTE_TARGET_SSE2
+void bitopAndSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+    unsigned long i, j = 0;
+
+    while (j + 8 * 16 <= minlen) {
+        __m128i r0 = BITOP_SSE2_LOAD(src[0] + j);
+        __m128i r1 = BITOP_SSE2_LOAD(src[0] + j + 16);
+        __m128i r2 = BITOP_SSE2_LOAD(src[0] + j + 2 * 16);
+        __m128i r3 = BITOP_SSE2_LOAD(src[0] + j + 3 * 16);
+        __m128i r4 = BITOP_SSE2_LOAD(src[0] + j + 4 * 16);
+        __m128i r5 = BITOP_SSE2_LOAD(src[0] + j + 5 * 16);
+        __m128i r6 = BITOP_SSE2_LOAD(src[0] + j + 6 * 16);
+        __m128i r7 = BITOP_SSE2_LOAD(src[0] + j + 7 * 16);
+
+        for (i = 1; i < numkeys; i++) {
+            r0 = _mm_and_si128(r0, BITOP_SSE2_LOAD(src[i] + j));
+            r1 = _mm_and_si128(r1, BITOP_SSE2_LOAD(src[i] + j + 16));
+            r2 = _mm_and_si128(r2, BITOP_SSE2_LOAD(src[i] + j + 2 * 16));
+            r3 = _mm_and_si128(r3, BITOP_SSE2_LOAD(src[i] + j + 3 * 16));
+            r4 = _mm_and_si128(r4, BITOP_SSE2_LOAD(src[i] + j + 4 * 16));
+            r5 = _mm_and_si128(r5, BITOP_SSE2_LOAD(src[i] + j + 5 * 16));
+            r6 = _mm_and_si128(r6, BITOP_SSE2_LOAD(src[i] + j + 6 * 16));
+            r7 = _mm_and_si128(r7, BITOP_SSE2_LOAD(src[i] + j + 7 * 16));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r0);
+        BITOP_SSE2_STORE(dst + j + 16, r1);
+        BITOP_SSE2_STORE(dst + j + 2 * 16, r2);
+        BITOP_SSE2_STORE(dst + j + 3 * 16, r3);
+        BITOP_SSE2_STORE(dst + j + 4 * 16, r4);
+        BITOP_SSE2_STORE(dst + j + 5 * 16, r5);
+        BITOP_SSE2_STORE(dst + j + 6 * 16, r6);
+        BITOP_SSE2_STORE(dst + j + 7 * 16, r7);
+        j += 8 * 16;
+    }
+
+    while (j + 16 <= minlen) {
+        __m128i r = BITOP_SSE2_LOAD(src[0] + j);
+
+        for (i = 1; i < numkeys; i++) {
+            r = _mm_and_si128(r, BITOP_SSE2_LOAD(src[i] + j));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r);
+        j += 16;
+    }
+
+    bitopScalarRange(dst, src, len, numkeys, j, minlen, BITOP_AND);
+    if (minlen < maxlen) memset(dst + minlen, 0, maxlen - minlen);
+}
+
+/* Vectorize OR over the common source prefix with unaligned SSE2 loads. The
+ * scalar tail handles mixed source lengths after the vectorized range. */
+ATTRIBUTE_TARGET_SSE2
+void bitopOrSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+    unsigned long i, j = 0;
+
+    while (j + 8 * 16 <= minlen) {
+        __m128i r0 = BITOP_SSE2_LOAD(src[0] + j);
+        __m128i r1 = BITOP_SSE2_LOAD(src[0] + j + 16);
+        __m128i r2 = BITOP_SSE2_LOAD(src[0] + j + 2 * 16);
+        __m128i r3 = BITOP_SSE2_LOAD(src[0] + j + 3 * 16);
+        __m128i r4 = BITOP_SSE2_LOAD(src[0] + j + 4 * 16);
+        __m128i r5 = BITOP_SSE2_LOAD(src[0] + j + 5 * 16);
+        __m128i r6 = BITOP_SSE2_LOAD(src[0] + j + 6 * 16);
+        __m128i r7 = BITOP_SSE2_LOAD(src[0] + j + 7 * 16);
+
+        for (i = 1; i < numkeys; i++) {
+            r0 = _mm_or_si128(r0, BITOP_SSE2_LOAD(src[i] + j));
+            r1 = _mm_or_si128(r1, BITOP_SSE2_LOAD(src[i] + j + 16));
+            r2 = _mm_or_si128(r2, BITOP_SSE2_LOAD(src[i] + j + 2 * 16));
+            r3 = _mm_or_si128(r3, BITOP_SSE2_LOAD(src[i] + j + 3 * 16));
+            r4 = _mm_or_si128(r4, BITOP_SSE2_LOAD(src[i] + j + 4 * 16));
+            r5 = _mm_or_si128(r5, BITOP_SSE2_LOAD(src[i] + j + 5 * 16));
+            r6 = _mm_or_si128(r6, BITOP_SSE2_LOAD(src[i] + j + 6 * 16));
+            r7 = _mm_or_si128(r7, BITOP_SSE2_LOAD(src[i] + j + 7 * 16));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r0);
+        BITOP_SSE2_STORE(dst + j + 16, r1);
+        BITOP_SSE2_STORE(dst + j + 2 * 16, r2);
+        BITOP_SSE2_STORE(dst + j + 3 * 16, r3);
+        BITOP_SSE2_STORE(dst + j + 4 * 16, r4);
+        BITOP_SSE2_STORE(dst + j + 5 * 16, r5);
+        BITOP_SSE2_STORE(dst + j + 6 * 16, r6);
+        BITOP_SSE2_STORE(dst + j + 7 * 16, r7);
+        j += 8 * 16;
+    }
+
+    while (j + 16 <= minlen) {
+        __m128i r = BITOP_SSE2_LOAD(src[0] + j);
+
+        for (i = 1; i < numkeys; i++) {
+            r = _mm_or_si128(r, BITOP_SSE2_LOAD(src[i] + j));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r);
+        j += 16;
+    }
+
+    bitopScalarRange(dst, src, len, numkeys, j, maxlen, BITOP_OR);
+}
+
+/* Vectorize XOR over the common source prefix with unaligned SSE2 loads. The
+ * scalar tail preserves zero-extension when source lengths differ. */
+ATTRIBUTE_TARGET_SSE2
+void bitopXorSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+    unsigned long i, j = 0;
+
+    while (j + 8 * 16 <= minlen) {
+        __m128i r0 = BITOP_SSE2_LOAD(src[0] + j);
+        __m128i r1 = BITOP_SSE2_LOAD(src[0] + j + 16);
+        __m128i r2 = BITOP_SSE2_LOAD(src[0] + j + 2 * 16);
+        __m128i r3 = BITOP_SSE2_LOAD(src[0] + j + 3 * 16);
+        __m128i r4 = BITOP_SSE2_LOAD(src[0] + j + 4 * 16);
+        __m128i r5 = BITOP_SSE2_LOAD(src[0] + j + 5 * 16);
+        __m128i r6 = BITOP_SSE2_LOAD(src[0] + j + 6 * 16);
+        __m128i r7 = BITOP_SSE2_LOAD(src[0] + j + 7 * 16);
+
+        for (i = 1; i < numkeys; i++) {
+            r0 = _mm_xor_si128(r0, BITOP_SSE2_LOAD(src[i] + j));
+            r1 = _mm_xor_si128(r1, BITOP_SSE2_LOAD(src[i] + j + 16));
+            r2 = _mm_xor_si128(r2, BITOP_SSE2_LOAD(src[i] + j + 2 * 16));
+            r3 = _mm_xor_si128(r3, BITOP_SSE2_LOAD(src[i] + j + 3 * 16));
+            r4 = _mm_xor_si128(r4, BITOP_SSE2_LOAD(src[i] + j + 4 * 16));
+            r5 = _mm_xor_si128(r5, BITOP_SSE2_LOAD(src[i] + j + 5 * 16));
+            r6 = _mm_xor_si128(r6, BITOP_SSE2_LOAD(src[i] + j + 6 * 16));
+            r7 = _mm_xor_si128(r7, BITOP_SSE2_LOAD(src[i] + j + 7 * 16));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r0);
+        BITOP_SSE2_STORE(dst + j + 16, r1);
+        BITOP_SSE2_STORE(dst + j + 2 * 16, r2);
+        BITOP_SSE2_STORE(dst + j + 3 * 16, r3);
+        BITOP_SSE2_STORE(dst + j + 4 * 16, r4);
+        BITOP_SSE2_STORE(dst + j + 5 * 16, r5);
+        BITOP_SSE2_STORE(dst + j + 6 * 16, r6);
+        BITOP_SSE2_STORE(dst + j + 7 * 16, r7);
+        j += 8 * 16;
+    }
+
+    while (j + 16 <= minlen) {
+        __m128i r = BITOP_SSE2_LOAD(src[0] + j);
+
+        for (i = 1; i < numkeys; i++) {
+            r = _mm_xor_si128(r, BITOP_SSE2_LOAD(src[i] + j));
+        }
+
+        BITOP_SSE2_STORE(dst + j, r);
+        j += 16;
+    }
+
+    bitopScalarRange(dst, src, len, numkeys, j, maxlen, BITOP_XOR);
+}
+
+/* Vectorize NOT across maxlen because the single input length defines the full
+ * destination. Unaligned loads are safe for SDS-backed strings. */
+ATTRIBUTE_TARGET_SSE2
+void bitopNotSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen) {
+    const __m128i ones = _mm_set1_epi8((char)0xff);
+    unsigned long j = 0;
+
+    (void)minlen;
+
+    while (j + 8 * 16 <= maxlen) {
+        __m128i r0 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j), ones);
+        __m128i r1 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 16), ones);
+        __m128i r2 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 2 * 16), ones);
+        __m128i r3 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 3 * 16), ones);
+        __m128i r4 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 4 * 16), ones);
+        __m128i r5 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 5 * 16), ones);
+        __m128i r6 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 6 * 16), ones);
+        __m128i r7 = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j + 7 * 16), ones);
+
+        BITOP_SSE2_STORE(dst + j, r0);
+        BITOP_SSE2_STORE(dst + j + 16, r1);
+        BITOP_SSE2_STORE(dst + j + 2 * 16, r2);
+        BITOP_SSE2_STORE(dst + j + 3 * 16, r3);
+        BITOP_SSE2_STORE(dst + j + 4 * 16, r4);
+        BITOP_SSE2_STORE(dst + j + 5 * 16, r5);
+        BITOP_SSE2_STORE(dst + j + 6 * 16, r6);
+        BITOP_SSE2_STORE(dst + j + 7 * 16, r7);
+        j += 8 * 16;
+    }
+
+    while (j + 16 <= maxlen) {
+        __m128i r = _mm_xor_si128(BITOP_SSE2_LOAD(src[0] + j), ones);
+
+        BITOP_SSE2_STORE(dst + j, r);
+        j += 16;
+    }
+
+    bitopScalarRange(dst, src, len, numkeys, j, maxlen, BITOP_NOT);
+}
+
+#undef BITOP_SSE2_LOAD
+#undef BITOP_SSE2_STORE
+
 /* SDS strings are not vector-aligned, so the AVX2 helpers intentionally use
  * unaligned loads/stores and only read bytes covered by minlen/maxlen. */
 #define BITOP_AVX2_LOAD(p) _mm256_loadu_si256((const __m256i *)(p))
@@ -1230,6 +1435,15 @@ static void bitopCompute(int op, unsigned char *dst, unsigned char **src, unsign
             [BITOP_OR] = bitopOrAVX2,
             [BITOP_XOR] = bitopXorAVX2,
             [BITOP_NOT] = bitopNotAVX2,
+        };
+        kernel = kernels[op];
+    } else if (bitopUseSimd(op, numkeys, minlen, maxlen, 16)) {
+        /* SSE2 is part of the x86-64 baseline. */
+        static const bitopFunc kernels[] = {
+            [BITOP_AND] = bitopAndSSE2,
+            [BITOP_OR] = bitopOrSSE2,
+            [BITOP_XOR] = bitopXorSSE2,
+            [BITOP_NOT] = bitopNotSSE2,
         };
         kernel = kernels[op];
     }

@@ -18,6 +18,10 @@ extern "C" {
 #include "zmalloc.h"
 
 #if HAVE_X86_SIMD
+extern void bitopAndSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
+extern void bitopOrSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
+extern void bitopXorSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
+extern void bitopNotSSE2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
 extern void bitopAndAVX2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
 extern void bitopOrAVX2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
 extern void bitopXorAVX2(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
@@ -215,8 +219,8 @@ class BitopSimdTest : public ::testing::Test {
   protected:
 #if HAVE_X86_SIMD || HAVE_ARM_NEON
     void runCases(const char *impl, BitopSimdFunc func, int op) {
-        static const unsigned long sizes[] = {0, 1, 31, 32, 33, 63, 64, 65, 127,
-                                              128, 255, 256, 257, 511, 512, 4095, 4096, 4097};
+        static const unsigned long sizes[] = {0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127,
+                                              128, 129, 255, 256, 257, 511, 512, 4095, 4096, 4097};
         static const unsigned long multi_counts[] = {1, 2, 3, 4, 8, 15, 16, 17, 33};
         static const unsigned long not_counts[] = {1};
         static const BitopLayout layouts[] = {LAYOUT_EQUAL, LAYOUT_ASCENDING, LAYOUT_DESCENDING,
@@ -257,6 +261,70 @@ TEST_F(BitopSimdTest, AvailabilityCheck) {
 }
 
 #if HAVE_X86_SIMD
+TEST_F(BitopSimdTest, BitopAndSse2) {
+    runCases("SSE2", bitopAndSSE2, BITOP_AND);
+}
+
+TEST_F(BitopSimdTest, BitopOrSse2) {
+    runCases("SSE2", bitopOrSSE2, BITOP_OR);
+}
+
+TEST_F(BitopSimdTest, BitopXorSse2) {
+    runCases("SSE2", bitopXorSSE2, BITOP_XOR);
+}
+
+TEST_F(BitopSimdTest, BitopNotSse2) {
+    runCases("SSE2", bitopNotSSE2, BITOP_NOT);
+}
+
+TEST_F(BitopSimdTest, Sse2UnalignedBuffers) {
+    static const BitopSimdFunc kernels[] = {bitopAndSSE2, bitopOrSSE2, bitopXorSSE2, bitopNotSSE2};
+    static const unsigned long sizes[] = {0, 1, 15, 16, 17, 31, 32, 33, 127, 128, 129, 255, 256, 257};
+    unsigned char input[3][257 + 15];
+    unsigned char output[257 + 2 * 16 + 15];
+    unsigned char expected[257];
+    unsigned char *src[3];
+    const unsigned char *oracle_src[3];
+    unsigned long len[3];
+
+    for (int op = BITOP_AND; op <= BITOP_NOT; op++) {
+        unsigned long numkeys = op == BITOP_NOT ? 1 : 3;
+        for (size_t n = 0; n < sizeof(sizes) / sizeof(sizes[0]); n++) {
+            unsigned long size = sizes[n];
+            for (int mixed = 0; mixed < 2; mixed++) {
+                for (unsigned long src_offset = 0; src_offset < 16; src_offset++) {
+                    for (unsigned long dst_offset = 0; dst_offset < 16; dst_offset++) {
+                        SCOPED_TRACE(::testing::Message() << "op=" << opName(op) << " size=" << size
+                                                          << " mixed=" << mixed << " src_offset=" << src_offset
+                                                          << " dst_offset=" << dst_offset);
+                        unsigned long minlen = size;
+                        for (unsigned long i = 0; i < numkeys; i++) {
+                            for (size_t j = 0; j < sizeof(input[i]); j++) {
+                                input[i][j] = (unsigned char)(j * 37 + i * 91 + src_offset);
+                            }
+                            src[i] = input[i] + (src_offset + i * 5) % 16;
+                            oracle_src[i] = src[i];
+                            len[i] = mixed && i ? size / (i + 1) : size;
+                            if (len[i] < minlen) minlen = len[i];
+                        }
+                        bitopScalarOracle(expected, oracle_src, len, numkeys, size, op);
+                        memset(output, 0xcc, sizeof(output));
+                        unsigned long start = 16 + dst_offset;
+                        kernels[op](output + start, src, len, numkeys, minlen, size);
+                        ASSERT_EQ(0, memcmp(output + start, expected, size));
+                        for (unsigned long j = 0; j < start; j++) {
+                            ASSERT_EQ(0xcc, output[j]) << "leading guard offset=" << j;
+                        }
+                        for (size_t j = start + size; j < sizeof(output); j++) {
+                            ASSERT_EQ(0xcc, output[j]) << "trailing guard offset=" << j;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 TEST_F(BitopSimdTest, BitopAndAvx2) {
     if (!cpuHasAvx2()) GTEST_SKIP() << "AVX2 is not available on this CPU";
     runCases("AVX2", bitopAndAVX2, BITOP_AND);
