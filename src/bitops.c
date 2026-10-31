@@ -1407,8 +1407,9 @@ void bitopNotNEON(unsigned char *dst, unsigned char **src, unsigned long *len, u
 #undef BITOP_NEON_STORE
 #endif
 
-/* Centralize SIMD eligibility: NOT uses maxlen, multi-source ops need minlen
- * for safe vector loads, and many-source AND/OR keep scalar short-circuiting. */
+#if HAVE_X86_SIMD || HAVE_ARM_NEON
+/* NOT uses maxlen; other ops use minlen. Many-source AND/OR stay scalar.
+ * Guarded so 32-bit builds, which have no SIMD caller, do not warn. */
 static int bitopUseSimd(int op, unsigned long numkeys, unsigned long minlen, unsigned long maxlen, unsigned long threshold) {
     if (op == BITOP_NOT) return maxlen >= threshold;
 
@@ -1418,6 +1419,7 @@ static int bitopUseSimd(int op, unsigned long numkeys, unsigned long minlen, uns
 
     return minlen >= threshold;
 }
+#endif
 
 typedef void (*bitopFunc)(unsigned char *dst, unsigned char **src, unsigned long *len, unsigned long numkeys, unsigned long minlen, unsigned long maxlen);
 
